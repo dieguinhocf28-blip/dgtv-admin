@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DGTV Admin</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background:#111827;
+  color:white;
+  padding:20px;
+  margin:0;
+}
+h1 { color:#60a5fa; }
+.card {
+  background:#1f2937;
+  padding:20px;
+  border-radius:12px;
+  margin-bottom:15px;
+}
+.codigo {
+  color:#60a5fa;
+  font-size:20px;
+  font-weight:bold;
+}
+.linha {
+  margin-top:8px;
+  color:#d1d5db;
+}
+.ativo {
+  color:#4ade80;
+  font-weight:bold;
+}
+.bloqueado {
+  color:#f87171;
+  font-weight:bold;
+}
+button {
+  width:100%;
+  padding:12px;
+  margin-top:12px;
+  border:0;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+  font-size:16px;
+  font-weight:bold;
+}
+button.cancelar {
+  background:#374151;
+}
+input, select {
+  width:100%;
+  box-sizing:border-box;
+  padding:11px;
+  margin-top:6px;
+  border-radius:8px;
+  border:1px solid #374151;
+  background:#111827;
+  color:white;
+  font-size:16px;
+}
+label {
+  display:block;
+  margin-top:12px;
+  color:#9ca3af;
+}
+.formulario {
+  display:none;
+  margin-top:20px;
+  padding-top:20px;
+  border-top:1px solid #374151;
+}
+#form-novo {
+  display:none;
+  background:#1f2937;
+  padding:20px;
+  border-radius:12px;
+  margin:20px 0;
+}
+#mensagem {
+  margin:20px 0;
+  color:#9ca3af;
+}
+</style>
+</head>
+
+<body>
+
+<h1>DGTV Admin</h1>
+
+<button id="novo-dispositivo">+ Novo cliente</button>
+
+<div id="contador">Carregando clientes...</div>
+
+<input
+  id="pesquisa"
+  type="text"
+  placeholder="🔎 Pesquisar por código ou cliente"
+  style="margin:20px 0;"
+>
+
+<div id="form-novo">
+
+<h2>Novo cliente</h2>
+
+<label>Código</label>
+<input id="novo-codigo" type="text" placeholder="DGTV-0002">
+
+<label>Cliente</label>
+<input id="novo-cliente" type="text" placeholder="Nome do cliente">
+
+<label>Usuário</label>
+<input id="novo-usuario" type="text" placeholder="Usuário para entrar na DGTV">
+
+<label>Senha</label>
+<input id="novo-senha" type="text" placeholder="Senha">
+
+<label>Plano</label>
+<select id="novo-plano">
+<option value="mensal">Mensal</option>
+<option value="trimestral">Trimestral</option>
+<option value="semestral" selected>Semestral</option>
+<option value="anual">Anual</option>
+</select>
+
+<label>Status</label>
+<select id="novo-status">
+<option value="ativo">Ativo</option>
+<option value="bloqueado">Bloqueado</option>
+</select>
+
+<label>Data de início</label>
+<input id="novo-inicio" type="date">
+
+<label>Data de fim</label>
+<input id="novo-fim" type="date">
+
+<button id="salvar-novo">Cadastrar cliente</button>
+<button id="cancelar-novo" class="cancelar">Cancelar</button>
+
+</div>
+
+<div id="lista"></div>
+
+<div id="mensagem"></div>
+
+<script type="module">
+
+import { db } from "./firebase.js";
+
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+
+const lista = document.getElementById("lista");
+const contador = document.getElementById("contador");
+const mensagem = document.getElementById("mensagem");
+
+const formNovo = document.getElementById("form-novo");
+
+
+// Converte AAAA-MM-DD para DD/MM/AAAA
+function converterData(data) {
+
+  if (!data) return "";
+
+  const partes = data.split("-");
+
+  if (partes.length !== 3) return data;
+
+  return partes[2] + "/" + partes[1] + "/" + partes[0];
+}
+
+
+// Converte DD/MM/AAAA para AAAA-MM-DD
+function converterParaInput(data) {
+
+  if (!data) return "";
+
+  const partes = data.split("/");
+
+  if (partes.length !== 3) return data;
+
+  return partes[2] + "-" + partes[1] + "-" + partes[0];
+}
+
+
+// NOVO CLIENTE
+
+document.getElementById("novo-dispositivo").addEventListener("click", () => {
+
+  formNovo.style.display = "block";
+
+});
+
+
+document.getElementById("cancelar-novo").addEventListener("click", () => {
+
+  formNovo.style.display = "none";
+
+});
+
+
+document.getElementById("salvar-novo").addEventListener("click", async () => {
+
+  const codigo =
+    document.getElementById("novo-codigo").value.trim();
+
+  const cliente =
+    document.getElementById("novo-cliente").value.trim();
+
+  const usuario =
+    document.getElementById("novo-usuario").value.trim();
+
+  const senha =
+    document.getElementById("novo-senha").value.trim();
+
+  const plano =
+    document.getElementById("novo-plano").value;
+
+  const status =
+    document.getElementById("novo-status").value;
+
+  const dataInicio =
+    converterData(document.getElementById("novo-inicio").value);
+
+  const dataFim =
+    converterData(document.getElementById("novo-fim").value);
+
+
+  if (!codigo || !cliente || !usuario || !senha || !dataFim) {
+
+    alert("Preencha código, cliente, usuário, senha e data de fim.");
+
+    return;
+
+  }
+
+
+  try {
+
+    const referencia =
+      doc(db, "dispositivos", codigo);
+
+    const existente = await getDocs(collection(db, "dispositivos"));
+
+    const codigoExiste =
+      existente.docs.some(
+        documento => documento.id === codigo
+      );
+
+
+    if (codigoExiste) {
+
+      alert("Esse código já está cadastrado.");
+
+      return;
+
+    }
+
+
+    await setDoc(referencia, {
+
+      codigo,
+      cliente,
+      usuario,
+      senha,
+      plano,
+      status,
+      dataInicio,
+      dataFim
+
+    });
+
+
+    alert("Cliente cadastrado com sucesso!");
+
+    formNovo.style.display = "none";
+
+    await carregarDispositivos();
+
+
+  } catch (erro) {
+
+    console.error(erro);
+
+    alert("Erro ao cadastrar cliente.");
+
+  }
+
+});
+
+
+// PESQUISA
+
+document.getElementById("pesquisa").addEventListener("input", () => {
+
+  const termo =
+    document.getElementById("pesquisa").value
+    .toLowerCase()
+    .trim();
+
+
+  document.querySelectorAll(".card").forEach(card => {
+
+    card.style.display =
+      card.textContent.toLowerCase().includes(termo)
+      ? "block"
+      : "none";
+
+  });
+
+});
+
+
+// CARREGAR CLIENTES
+
+async function carregarDispositivos() {
+
+  try {
+
+    const resultado =
+      await getDocs(collection(db, "dispositivos"));
+
+
+    lista.innerHTML = "";
+
+
+    if (resultado.empty) {
+
+      contador.textContent =
+        "Nenhum cliente cadastrado.";
+
+      return;
+
+    }
+
+
+    contador.textContent =
+      resultado.size + " cliente(s) cadastrado(s)";
+
+
+    resultado.forEach(documento => {
+
+      const dados = documento.data();
+
+      const status =
+        dados.status || "ativo";
+
+
+      const card =
+        document.createElement("div");
+
+      card.className = "card";
+
+
+      card.innerHTML = `
+
+        <div class="codigo">
+          ${dados.codigo || documento.id}
+        </div>
+
+        <div class="linha">
+          Cliente: ${dados.cliente || "-"}
+        </div>
+
+        <div class="linha">
+          Usuário: ${dados.usuario || "-"}
+        </div>
+
+        <div class="linha">
+          Plano: ${dados.plano || "-"}
+        </div>
+
+        <div class="linha">
+          Status:
+          <span class="${status}">
+            ${status}
+          </span>
+        </div>
+
+        <div class="linha">
+          Início: ${dados.dataInicio || "-"}
+        </div>
+
+        <div class="linha">
+          Fim: ${dados.dataFim || "-"}
+        </div>
+
+        <button class="botao-editar">
+          Editar cliente
+        </button>
+
+        <button class="botao-status">
+          ${
+            status === "ativo"
+            ? "Bloquear cliente"
+            : "Ativar cliente"
+          }
+        </button>
+
+        <div class="formulario">
+
+          <label>Cliente</label>
+          <input
+            class="campo-cliente"
+            type="text"
+            value="${dados.cliente || ""}"
+          >
+
+          <label>Usuário</label>
+          <input
+            class="campo-usuario"
+            type="text"
+            value="${dados.usuario || ""}"
+          >
+
+          <label>Senha</label>
+          <input
+            class="campo-senha"
+            type="text"
+            value="${dados.senha || ""}"
+          >
+
+          <label>Plano</label>
+          <select class="campo-plano">
+
+            <option value="mensal"
+              ${dados.plano === "mensal" ? "selected" : ""}>
+              Mensal
+            </option>
+
+            <option value="trimestral"
+              ${dados.plano === "trimestral" ? "selected" : ""}>
+              Trimestral
+            </option>
+
+            <option value="semestral"
+              ${dados.plano === "semestral" ? "selected" : ""}>
+              Semestral
+            </option>
+
+            <option value="anual"
+              ${dados.plano === "anual" ? "selected" : ""}>
+              Anual
+            </option>
+
+          </select>
+
+
+          <label>Status</label>
+
+          <select class="campo-status">
+
+            <option value="ativo"
+              ${status === "ativo" ? "selected" : ""}>
+              Ativo
+            </option>
+
+            <option value="bloqueado"
+              ${status === "bloqueado" ? "selected" : ""}>
+              Bloqueado
+            </option>
+
+          </select>
+
+
+          <label>Data de início</label>
+
+          <input
+            class="campo-inicio"
+            type="date"
+            value="${converterParaInput(dados.dataInicio || "")}"
+          >
+
+
+          <label>Data de fim</label>
+
+          <input
+            class="campo-fim"
+            type="date"
+            value="${converterParaInput(dados.dataFim || "")}"
+          >
+
+
+          <button class="botao-salvar">
+            Salvar alterações
+          </button>
+
+          <button class="cancelar botao-cancelar">
+            Cancelar
+          </button>
+
+        </div>
+
+      `;
+
+
+      lista.appendChild(card);
+
+
+      const formulario =
+        card.querySelector(".formulario");
+
+      const botaoEditar =
+        card.querySelector(".botao-editar");
+
+      const botaoCancelar =
+        card.querySelector(".botao-cancelar");
+
+      const botaoStatus =
+        card.querySelector(".botao-status");
+
+      const botaoSalvar =
+        card.querySelector(".botao-salvar");
+
+
+      botaoEditar.addEventListener("click", () => {
+
+        formulario.style.display = "block";
+
+        botaoEditar.style.display = "none";
+
+      });
+
+
+      botaoCancelar.addEventListener("click", () => {
+
+        formulario.style.display = "none";
+
+        botaoEditar.style.display = "block";
+
+      });
+
+
+      botaoStatus.addEventListener("click", async () => {
+
+        const novoStatus =
+          status === "ativo"
+          ? "bloqueado"
+          : "ativo";
+
+
+        try {
+
+          await updateDoc(
+            doc(db, "dispositivos", documento.id),
+            {
+              status: novoStatus
+            }
+          );
+
+
+          mensagem.textContent =
+            novoStatus === "ativo"
+            ? "Cliente ativado com sucesso!"
+            : "Cliente bloqueado com sucesso!";
+
+
+          await carregarDispositivos();
+
+
+        } catch (erro) {
+
+          console.error(erro);
+
+          mensagem.textContent =
+            "Erro ao alterar o status.";
+
+        }
+
+      });
+
+
+      botaoSalvar.addEventListener("click", async () => {
+
+        const novosDados = {
+
+          cliente:
+            card.querySelector(".campo-cliente").value.trim(),
+
+          usuario:
+            card.querySelector(".campo-usuario").value.trim(),
+
+          senha:
+            card.querySelector(".campo-senha").value.trim(),
+
+          plano:
+            card.querySelector(".campo-plano").value,
+
+          status:
+            card.querySelector(".campo-status").value,
+
+          dataInicio:
+            converterData(
+              card.querySelector(".campo-inicio").value
+            ),
+
+          dataFim:
+            converterData(
+              card.querySelector(".campo-fim").value
+            )
+
+        };
+
+
+        if (
+          !novosDados.cliente ||
+          !novosDados.usuario ||
+          !novosDados.senha ||
+          !novosDados.dataFim
+        ) {
+
+          alert(
+            "Cliente, usuário, senha e data de fim são obrigatórios."
+          );
+
+          return;
+
+        }
+
+
+        try {
+
+          await updateDoc(
+            doc(db, "dispositivos", documento.id),
+            novosDados
+          );
+
+
+          mensagem.textContent =
+            "Cliente atualizado com sucesso!";
+
+
+          await carregarDispositivos();
+
+
+        } catch (erro) {
+
+          console.error(erro);
+
+          mensagem.textContent =
+            "Erro ao salvar o cliente.";
+
+        }
+
+      });
+
+    });
+
+
+  } catch (erro) {
+
+    console.error(erro);
+
+    mensagem.textContent =
+      "Erro ao carregar os clientes.";
+
+  }
+
+}
+
+
+carregarDispositivos();
+
+</script>
+
+</body>
+</html>
